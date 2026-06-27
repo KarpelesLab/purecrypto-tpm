@@ -11,7 +11,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, TpmRc};
 use crate::marshal::{Marshal, Reader, Unmarshal, marshal_tpm2b};
 use crate::session::{AuthResponse, Session};
 use crate::transport::Transport;
@@ -141,8 +141,20 @@ impl<T: Transport> Tpm<T> {
         code.marshal(&mut frame);
         frame.extend_from_slice(&body);
 
-        let resp = self.transport.transmit(&frame)?;
-        self.parse_response(code, &resp, auth, names, resp_handles)
+        // The frame is fixed now (including the session nonce/HMAC). On a
+        // transient warning the TPM did not process the command — its session
+        // state is unchanged — so resubmitting the identical bytes is correct.
+        let mut attempt = 0u32;
+        loop {
+            let resp = self.transport.transmit(&frame)?;
+            match self.parse_response(code, &resp, auth, names, resp_handles) {
+                Err(Error::Tpm(rc)) if is_transient(rc) && attempt < MAX_TRANSIENT_RETRIES => {
+                    attempt += 1;
+                    backoff(attempt);
+                }
+                other => return other,
+            }
+        }
     }
 
     fn parse_response(
@@ -206,6 +218,27 @@ fn cp_hash(alg: Alg, code: u32, names: &[&[u8]], params: &[u8]) -> Result<Vec<u8
     parts.push(params);
     crypto::hash_parts(alg, &parts)
 }
+
+/// How many times to resubmit a command the TPM answered with a transient
+/// "try again" warning before giving up.
+const MAX_TRANSIENT_RETRIES: u32 = 12;
+
+/// Whether `rc` is a transient warning the spec says to resubmit on:
+/// `TPM_RC_YIELDED` (0x908), `TPM_RC_TESTING` (0x90A, an algorithm is still
+/// self-testing) or `TPM_RC_RETRY` (0x922, the TPM could not start the
+/// command). All are format-zero, so `base()` is a no-op but keeps intent.
+fn is_transient(rc: TpmRc) -> bool {
+    matches!(rc.base().raw(), 0x908 | 0x90A | 0x922)
+}
+
+/// Brief capped backoff between resubmissions (no-op without `std`).
+#[cfg(feature = "std")]
+fn backoff(attempt: u32) {
+    std::thread::sleep(std::time::Duration::from_millis((attempt as u64) * 5));
+}
+
+#[cfg(not(feature = "std"))]
+fn backoff(_attempt: u32) {}
 
 /// `rpHash = H(responseCode || commandCode || parameters)`.
 fn rp_hash(alg: Alg, rc: u32, code: u32, params: &[u8]) -> Result<Vec<u8>> {
