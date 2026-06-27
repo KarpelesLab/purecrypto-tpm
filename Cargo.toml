@@ -1,0 +1,43 @@
+# purecrypto-tpm: a pure-Rust TPM 2.0 stack.
+#
+# Speaks the TPM 2.0 command/response wire protocol (TCG TPM 2.0 Library, Part
+# 1-4) directly over the Linux character device or the Microsoft/ms-tpm-20-ref
+# (a.k.a. swtpm) simulator socket. No `tpm2-tss`, no C, no foreign code: the
+# session crypto (object Names, HMAC sessions, KDFa, parameter encryption) is
+# provided by the sibling `purecrypto` crate.
+
+[package]
+name = "purecrypto-tpm"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A pure-Rust TPM 2.0 stack — wire protocol, sessions and sealing over the Linux device or simulator, with no foreign code."
+repository = "https://github.com/KarpelesLab/purecrypto-tpm"
+license = "MIT"
+keywords = ["tpm", "tpm2", "security", "crypto", "sealing"]
+categories = ["cryptography", "hardware-support"]
+
+[lib]
+name = "purecrypto_tpm"
+
+[features]
+# `std` (default) brings in the OS transports — the Linux character device and
+# the simulator TCP socket — and `std::error::Error`. Without it the crate is a
+# pure marshalling + session core that drives any `Transport` you supply.
+default = ["std", "device", "simulator"]
+std = ["purecrypto/std"]
+
+# Linux `/dev/tpm0` / `/dev/tpmrm0` transport (implies `std`).
+device = ["std"]
+# Microsoft simulator (ms-tpm-20-ref / swtpm `--tpm2`) TCP transport (implies `std`).
+simulator = ["std"]
+
+[dependencies]
+# Sibling pure-Rust crypto toolkit. We use SHA-2 (object Names, cpHash/rpHash,
+# policy digests), HMAC (HMAC sessions), AES-CFB (parameter encryption), the
+# EC stack (salted sessions, future) and OsRng (session nonces). Default
+# features are off so we don't drag in TLS/CLI/PQ; we re-enable only what the
+# session layer needs.
+purecrypto = { path = "../purecrypto", default-features = false, features = ["alloc", "hash", "cipher", "ec", "rng"] }
+
+[dev-dependencies]
