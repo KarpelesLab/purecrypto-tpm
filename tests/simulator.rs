@@ -15,15 +15,25 @@
 //! PURECRYPTO_TPM_SIM=127.0.0.1:2321 cargo test --test simulator
 //! ```
 
+use std::sync::{Mutex, MutexGuard};
+
 use purecrypto_tpm::transport::SimulatorTransport;
 use purecrypto_tpm::types::constants::{Alg, cap, pt, rh, su};
 use purecrypto_tpm::types::handles::Handle;
 use purecrypto_tpm::types::structures::{Buffer, Public, SensitiveCreate};
 use purecrypto_tpm::{Auth, Tpm};
 
+/// A single simulated TPM must be driven serially: concurrent connections and
+/// interleaved commands draw `TPM_RC_RETRY`. cargo runs the tests in this
+/// binary on multiple threads, so they take this lock to take turns (CI also
+/// passes `--test-threads=1`). Poison is ignored — a panicking test still
+/// releases the TPM for the next one.
+static TPM_LOCK: Mutex<()> = Mutex::new(());
+
 /// Connects a `Tpm` to the simulator named by `PURECRYPTO_TPM_SIM`, or returns
-/// `None` (with a printed notice) if the variable is unset.
-fn connect() -> Option<Tpm<SimulatorTransport>> {
+/// `None` (with a printed notice) if the variable is unset. The returned guard
+/// must be held for the duration of the test to keep access serialized.
+fn connect() -> Option<(Tpm<SimulatorTransport>, MutexGuard<'static, ()>)> {
     let addr = match std::env::var("PURECRYPTO_TPM_SIM") {
         Ok(a) if !a.is_empty() => a,
         _ => {
@@ -31,17 +41,20 @@ fn connect() -> Option<Tpm<SimulatorTransport>> {
             return None;
         }
     };
+    let guard = TPM_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let sim = SimulatorTransport::connect(&addr).expect("connect to simulator");
     let mut tpm = Tpm::new(sim);
     // swtpm started with `startup-clear` is already initialised; ignore the
     // resulting TPM_RC_INITIALIZE if so.
     let _ = tpm.startup(su::CLEAR);
-    Some(tpm)
+    Some((tpm, guard))
 }
 
 #[test]
 fn randomness_and_capability() {
-    let Some(mut tpm) = connect() else { return };
+    let Some((mut tpm, _guard)) = connect() else {
+        return;
+    };
 
     let r = tpm.get_random(24).expect("get_random");
     assert!(!r.is_empty() && r.len() <= 24, "got {} bytes", r.len());
@@ -56,7 +69,9 @@ fn randomness_and_capability() {
 
 #[test]
 fn pcr_read_sha256_bank() {
-    let Some(mut tpm) = connect() else { return };
+    let Some((mut tpm, _guard)) = connect() else {
+        return;
+    };
 
     // PCR 0 in the SHA-256 bank should read back a digest-sized value.
     let v = tpm.pcr_read_one(Alg::SHA256, 0).expect("pcr_read");
@@ -67,7 +82,9 @@ fn pcr_read_sha256_bank() {
 
 #[test]
 fn seal_unseal_password() {
-    let Some(mut tpm) = connect() else { return };
+    let Some((mut tpm, _guard)) = connect() else {
+        return;
+    };
 
     let parent = tpm
         .create_primary(
@@ -127,7 +144,9 @@ fn seal_unseal_password() {
 
 #[test]
 fn seal_unseal_hmac_session() {
-    let Some(mut tpm) = connect() else { return };
+    let Some((mut tpm, _guard)) = connect() else {
+        return;
+    };
 
     let parent = tpm
         .create_primary(

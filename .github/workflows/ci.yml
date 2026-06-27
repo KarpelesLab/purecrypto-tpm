@@ -77,10 +77,13 @@ jobs:
             sleep 0.2
           done
 
+      # Drive the single simulated TPM serially: parallel tests would open
+      # concurrent connections and interleave commands, which the TPM answers
+      # with TPM_RC_RETRY (0x922).
       - name: Run integration tests
         env:
           PURECRYPTO_TPM_SIM: 127.0.0.1:2321
-        run: cargo test --test simulator -- --nocapture
+        run: cargo test --test simulator -- --test-threads=1 --nocapture
 
       - name: Stop swtpm
         if: always()
