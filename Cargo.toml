@@ -8,7 +8,7 @@
 
 [package]
 name = "purecrypto-tpm"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.88"
 description = "A pure-Rust TPM 2.0 stack — wire protocol, sessions and sealing over the Linux device or simulator, with no foreign code."
