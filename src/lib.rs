@@ -8,8 +8,9 @@
 //!
 //! # Layers
 //!
-//! 1. **Marshalling** ([`marshal`]) — the big-endian [`Marshal`]/[`Unmarshal`]
-//!    traits every TPM structure is built from.
+//! 1. **Marshalling** ([`marshal`]) — the big-endian
+//!    [`Marshal`](marshal::Marshal)/[`Unmarshal`](marshal::Unmarshal) traits
+//!    every TPM structure is built from.
 //! 2. **Types** ([`types`]) — the TPM constants (`TPM_CC`, `TPM_RC`,
 //!    `TPM_ALG_ID`, handles …) and the structure subset this crate uses.
 //! 3. **Transport** ([`transport`]) — a [`Transport`](transport::Transport)

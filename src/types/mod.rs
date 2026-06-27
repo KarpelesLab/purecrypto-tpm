@@ -17,6 +17,6 @@ pub use attributes::{ObjectAttributes, SessionAttributes};
 pub use constants::{Alg, cap, cc, pt, rh, se, st, su};
 pub use handles::Handle;
 pub use structures::{
-    Buffer, Public, PublicId, PublicParms, PcrSelection, PcrSelectionList, SensitiveCreate,
+    Buffer, PcrSelection, PcrSelectionList, Public, PublicId, PublicParms, SensitiveCreate,
     SymDefObject, ecc_curve,
 };

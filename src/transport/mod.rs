@@ -41,4 +41,4 @@ pub use device::DeviceTransport;
 #[cfg(feature = "simulator")]
 mod simulator;
 #[cfg(feature = "simulator")]
-pub use simulator::SimulatorTransport;
+pub use simulator::{DEFAULT_ADDR, DEFAULT_PLATFORM_ADDR, SimulatorTransport};

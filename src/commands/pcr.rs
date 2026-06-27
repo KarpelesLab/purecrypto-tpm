@@ -10,9 +10,7 @@ use crate::tpm::{Auth, Tpm};
 use crate::transport::Transport;
 use crate::types::constants::{Alg, cc};
 use crate::types::handles::Handle;
-use crate::types::structures::{
-    Buffer, PcrSelection, PcrSelectionList, read_digest_list,
-};
+use crate::types::structures::{Buffer, PcrSelection, PcrSelectionList, read_digest_list};
 
 impl<T: Transport> Tpm<T> {
     /// `TPM2_PCR_Read` — read the PCRs named by `selection`.

@@ -1,5 +1,10 @@
 # purecrypto-tpm
 
+[![CI](https://github.com/KarpelesLab/purecrypto-tpm/actions/workflows/ci.yml/badge.svg)](https://github.com/KarpelesLab/purecrypto-tpm/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/purecrypto-tpm.svg)](https://crates.io/crates/purecrypto-tpm)
+[![docs.rs](https://img.shields.io/docsrs/purecrypto-tpm)](https://docs.rs/purecrypto-tpm)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A **pure-Rust TPM 2.0 stack**. It speaks the TPM 2.0 command/response wire
 protocol (TCG *TPM 2.0 Library Specification*, Parts 1–4) **directly** — no
 `tpm2-tss`, no C, no foreign code. The session cryptography it needs (object
@@ -41,16 +46,26 @@ use purecrypto_tpm::transport::{DeviceTransport, SimulatorTransport};
 // Real hardware via the in-kernel resource manager (needs access to the device).
 let mut tpm = Tpm::new(DeviceTransport::open_default()?);
 
-// Or the Microsoft / swtpm simulator over TCP, for testing without hardware:
-let mut sim = SimulatorTransport::connect_default()?;
-sim.power_on()?;                 // power + NV signals
+// Or a simulator over TCP, for testing without hardware. swtpm's data socket
+// (2321) speaks the same mssim framing; start it with `--flags startup-clear`
+// so it powers on and runs TPM2_Startup itself, then just connect:
+let mut tpm = Tpm::new(SimulatorTransport::connect_default()?);
+
+// The ms-tpm-20-ref / IBM simulator instead drives power over a second
+// "platform" socket (2322):
+let mut sim = SimulatorTransport::connect_mssim_default()?;
+sim.power_on()?;                 // POWER_ON + NV_ON over the platform socket
 let mut tpm = Tpm::new(sim);
 # Ok::<(), purecrypto_tpm::Error>(())
 ```
 
 > Note: `/dev/tpm0` and `/dev/tpmrm0` are typically root-only. Use a group/udev
-> rule, run elevated, or point at a simulator (`swtpm socket --tpm2 --server
-> type=tcp,port=2321 ...`) for unprivileged development.
+> rule, run elevated, or point at a simulator for unprivileged development:
+>
+> ```text
+> swtpm socket --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 \
+>   --tpmstate dir=$(mktemp -d) --flags not-need-init,startup-clear
+> ```
 
 ## Sealing example
 
@@ -112,6 +127,31 @@ tpm.flush_context(sess.handle)?;
 - NV storage, persistent objects (`EvictControl`), quoting/attestation.
 - RSA storage parents and a richer `TPMT_PUBLIC` parser.
 - Integration tests against `swtpm` in CI.
+
+## Development
+
+The crate depends on the published `purecrypto` from crates.io. To co-develop
+against a local checkout, add a patch to `Cargo.toml` (don't commit it — CI and
+`cargo publish` should use the release):
+
+```toml
+[patch.crates-io]
+purecrypto = { path = "../purecrypto" }
+```
+
+Run the full test suite — unit tests plus the simulator integration tests —
+against a local swtpm:
+
+```sh
+swtpm socket --tpm2 --server type=tcp,port=2321 --ctrl type=tcp,port=2322 \
+  --tpmstate dir=$(mktemp -d) --flags not-need-init,startup-clear &
+PURECRYPTO_TPM_SIM=127.0.0.1:2321 cargo test
+```
+
+Without `PURECRYPTO_TPM_SIM` the integration tests skip themselves, so a bare
+`cargo test` runs only the unit tests. CI (`.github/workflows/ci.yml`) runs
+fmt/clippy/docs, `no_std` builds, the MSRV check, and the swtpm integration
+job; `release-plz` publishes to crates.io.
 
 ## License
 

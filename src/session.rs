@@ -23,8 +23,8 @@
 //!
 //! **Status:** authorization (command HMAC + response HMAC verification) is
 //! implemented for unsalted sessions, both unbound and bound. Salted sessions
-//! and parameter *encryption* (the CFB transform, for which [`crate::crypto`]
-//! already provides the primitive) are not yet wired in.
+//! and parameter *encryption* (the CFB transform, for which the internal
+//! `crypto` module already provides the primitive) are not yet wired in.
 
 #[cfg(any(test, feature = "std"))]
 use alloc::vec;
@@ -102,6 +102,7 @@ impl Session {
     /// With everything empty this yields an unsalted, unbound session whose
     /// `sessionKey` is empty (authorization still benefits from rolling
     /// nonces and `cpHash` binding).
+    #[allow(clippy::too_many_arguments)] // mirrors StartAuthSession's own inputs
     pub fn new(
         handle: Handle,
         hash_alg: Alg,
@@ -197,9 +198,7 @@ impl Session {
             ],
         )?;
         // Constant-time comparison; lengths must match too.
-        if expected.len() != resp.hmac.len()
-            || !bool::from(ct_eq(&expected, &resp.hmac))
-        {
+        if expected.len() != resp.hmac.len() || !bool::from(ct_eq(&expected, &resp.hmac)) {
             return Err(Error::Protocol(alloc::string::String::from(
                 "response HMAC verification failed",
             )));
@@ -284,12 +283,9 @@ mod tests {
         let rp = [0x22u8; 32];
         let new_tpm = vec![0xDD; 32];
         let key = s.hmac_key(auth, other_name);
-        let resp_hmac = crypto::hmac_parts(
-            Alg::SHA256,
-            &key,
-            &[&rp, &new_tpm, &nc, &[s.attributes.0]],
-        )
-        .unwrap();
+        let resp_hmac =
+            crypto::hmac_parts(Alg::SHA256, &key, &[&rp, &new_tpm, &nc, &[s.attributes.0]])
+                .unwrap();
         let resp = AuthResponse {
             nonce_tpm: new_tpm.clone(),
             attributes: s.attributes,

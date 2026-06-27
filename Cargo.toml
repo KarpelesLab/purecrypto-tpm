@@ -38,6 +38,10 @@ simulator = ["std"]
 # EC stack (salted sessions, future) and OsRng (session nonces). Default
 # features are off so we don't drag in TLS/CLI/PQ; we re-enable only what the
 # session layer needs.
-purecrypto = { path = "../purecrypto", default-features = false, features = ["alloc", "hash", "cipher", "ec", "rng"] }
+#
+# Depend on the published crate. To co-develop against a local checkout, add a
+# `[patch.crates-io] purecrypto = { path = "../purecrypto" }` (kept out of the
+# committed manifest so CI and `cargo publish` use the release as-is).
+purecrypto = { version = "0.6", default-features = false, features = ["alloc", "hash", "cipher", "ec", "rng"] }
 
 [dev-dependencies]

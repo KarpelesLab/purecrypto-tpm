@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test & lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy (all targets/features, warnings denied)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # Unit tests; the simulator integration tests skip themselves when
+      # PURECRYPTO_TPM_SIM is unset (they get their own job below).
+      - name: Test
+        run: cargo test --all-features
+
+  swtpm:
+    name: Integration vs swtpm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: swtpm
+
+      - name: Install swtpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y swtpm
+
+      - name: Start swtpm (TCP, auto power-on + startup)
+        run: |
+          set -euxo pipefail
+          statedir="$(mktemp -d)"
+          # `startup-clear` makes swtpm power on and run TPM2_Startup(CLEAR)
+          # itself, so the mssim data socket is usable immediately; its control
+          # socket is not mssim-compatible, which is why we don't touch it.
+          swtpm socket --tpm2 \
+            --server type=tcp,port=2321 \
+            --ctrl type=tcp,port=2322 \
+            --tpmstate dir="$statedir" \
+            --flags not-need-init,startup-clear &
+          echo "SWTPM_PID=$!" >> "$GITHUB_ENV"
+          # Wait for the data port to accept connections.
+          for _ in $(seq 1 50); do
+            if (exec 3<>/dev/tcp/127.0.0.1/2321) 2>/dev/null; then
+              echo "swtpm is up"; break
+            fi
+            sleep 0.2
+          done
+
+      - name: Run integration tests
+        env:
+          PURECRYPTO_TPM_SIM: 127.0.0.1:2321
+        run: cargo test --test simulator -- --nocapture
+
+      - name: Stop swtpm
+        if: always()
+        run: kill "${SWTPM_PID}" 2>/dev/null || true
+
+  no_std:
+    name: no_std builds (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # thumbv7em-none-eabi is a 32-bit bare-metal target: it catches both
+        # accidental `std` dependencies and 64-bit-only assumptions.
+        target: [x86_64-unknown-linux-gnu, thumbv7em-none-eabi]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # The marshalling + session core must build #![no_std] + alloc, with the
+      # OS transports (and std::error::Error) compiled out.
+      - name: Build no_std core (no default features)
+        run: cargo build --target ${{ matrix.target }} --no-default-features
+
+  msrv:
+    name: MSRV (Rust 1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Keep this pin in sync with `rust-version` in Cargo.toml.
+      - name: Install Rust 1.88 (declared MSRV)
+        uses: dtolnay/rust-toolchain@1.88
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+
+      - name: cargo check --all-features --all-targets
+        run: cargo check --all-features --all-targets
+
+  docs:
+    name: Docs build (warnings denied)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings -D rustdoc::broken-intra-doc-links
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo doc --no-deps --all-features
+        run: cargo doc --no-deps --all-features

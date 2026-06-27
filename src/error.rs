@@ -106,10 +106,8 @@ impl fmt::Debug for TpmRc {
 impl fmt::Display for TpmRc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "TPM_RC 0x{:03x}", self.0)?;
-        if let Some(n) = self.arg_number() {
-            if let Some(kind) = self.arg_kind() {
-                write!(f, " ({} {})", kind.as_str(), n)?;
-            }
+        if let (Some(n), Some(kind)) = (self.arg_number(), self.arg_kind()) {
+            write!(f, " ({} {})", kind.as_str(), n)?;
         }
         Ok(())
     }

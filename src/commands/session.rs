@@ -21,11 +21,7 @@ impl<T: Transport> Tpm<T> {
     /// for you. The returned [`Session`] carries
     /// [`CONTINUE_SESSION`](SessionAttributes::CONTINUE_SESSION) so it survives
     /// across commands until you [`flush`](Tpm::flush_context) it.
-    pub fn start_auth_session(
-        &mut self,
-        hash_alg: Alg,
-        nonce_caller: Vec<u8>,
-    ) -> Result<Session> {
+    pub fn start_auth_session(&mut self, hash_alg: Alg, nonce_caller: Vec<u8>) -> Result<Session> {
         // Handle area: tpmKey (NULL = unsalted), bind (NULL = unbound).
         let handles = [Handle(rh::NULL), Handle(rh::NULL)];
 

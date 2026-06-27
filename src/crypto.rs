@@ -98,14 +98,7 @@ pub fn kdfa(
         let block = hmac_parts(
             alg,
             key,
-            &[
-                &ctr_be,
-                label,
-                &[0x00],
-                context_u,
-                context_v,
-                &bits_be,
-            ],
+            &[&ctr_be, label, &[0x00], context_u, context_v, &bits_be],
         )?;
         out.extend_from_slice(&block);
     }
